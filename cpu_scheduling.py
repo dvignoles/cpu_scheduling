@@ -1,3 +1,33 @@
+'''
+Author: Daniel Vignoles
+
+Purpose: Demonstrate CPU Scheduling algorithms
+
+Usage: cpu_scheduling.py [-h] [-fcfs FCFS] [-sjn SJN] [-priority PRIORITY]
+
+    optional arguments:
+        -h, --help          show this help message and exit
+        -fcfs FCFS          First Come First Serve Scheduling time quantum. TQ <= 0
+                            -> non-preemptive
+        -sjn SJN            Shortest Job Next Scheduling time quantum. Functions as
+                            Shortest Remaining Time Next in Round Robin. TQ <= 0 ->
+                            non-preemptive (sjn)
+        -priority PRIORITY  Priority Scheduling time quantum. TQ <= 0 -> non-
+                            preemptive
+        -d, --demo          Demonstration + plot. Defaults option if no args
+                            supplied
+    ex:
+        python cpu_scheduling.py -fcfs 0 -sjn 100 -priority 50
+            -> nonpremptive FCFS
+            -> Round Robin SJN with timequantum 100
+            -> Round Robin Priority with timequnautm 50
+        python cpu_scheduling.py
+            -> demo routine
+        python cpu_scheduling.py -fcfs 0 -d
+            -> nonpremptive FCFS
+            -> demo routine
+'''
+
 import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -45,17 +75,19 @@ def record_proc(proc):
 
 def record_to_file(alg,record_list,ctx_count,rr=None):
     '''Write list of record_proc outputs to file and return filename'''
-    if rr:
-        filename = alg.__name__ + '_' + str(rr) + '.csv'
-    else:
-        filename = alg.__name__ + '.csv'
 
-    with open(filename,'w') as file:
+    if rr:
+        fname = alg.__name__ + '_' + str(rr) + '.csv'
+
+    else:
+        fname = alg.__name__ + '.csv'
+
+    with open(fname,'w') as file:
         file.write('context_switches:'+ str(ctx_count)+'\n')
         file.write("proc,completion_time,runtime,turnaround,wait\n")
         for entry in record_list:
             file.write(entry)
-    return filename
+    return fname
 
 def file_stats(filename):
     '''Return dictionary of stastistics based on output of record_to_file'''
@@ -241,7 +273,6 @@ def demo_plot(results):
 
     fig.suptitle('CPU Scheduling Algorithms by the Numbers')
     fig.set_size_inches(12.8,9.6)
-    plt.show()
     fig.savefig('cpu_scheduling_plot.png',bbox_inches='tight')
 
 def demo_table(results):
@@ -274,9 +305,10 @@ def arg_parser():
     '''Returns ArgumentParser object for command line arguments'''
     parser = argparse.ArgumentParser()
     parser.add_argument("-fcfs",help="First Come First Serve Scheduling time quantum. TQ <= 0 -> non-preemptive",nargs=1)
-    parser.add_argument("-sjn",help="Shortest Job Next Scheduling time quantum. TQ <= 0 -> non-preemptive",nargs=1)
+    parser.add_argument("-sjn",help="Shortest Job Next Scheduling time quantum. Functions as Shortest Remaining Time Next \
+        in Round Robin. TQ <= 0 -> non-preemptive (sjn)",nargs=1)
     parser.add_argument("-priority",help="Priority Scheduling time quantum. TQ <= 0 -> non-preemptive",nargs=1)
-    parser.add_argument("-g","--graph",help="Produce a plot", action="store_true")
+    parser.add_argument("-d","--demo",help="Demonstration + plot. Defaults option if no args supplied",action='store_true')
     return(parser)
 
 def main():
@@ -318,7 +350,7 @@ def main():
             print('priority: ',file_stats(scheduler(priority)))
     
     #No args = Demo
-    if not (args.fcfs and args.sjn and args.priority):
+    if (not (args.fcfs or args.sjn or args.priority)) or args.demo:
         demo()
 
 if __name__ == '__main__':

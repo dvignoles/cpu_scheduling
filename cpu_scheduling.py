@@ -49,6 +49,11 @@ class PCB():
         self.time_in_cpu = 0
         self.time_completed = None
         self.cpu_return_time = None
+
+        self.wait_total = 0
+        self.wait_count = 0
+        self.wait_max = 0
+        self.wait_avg = 0
     
     def __repr__(self):
         attr = [self.arrival_time,self.proc,self.pid,self.state,self.priority,self.interruptable,self.est_tot_time,self.est_remain_time,self.time_in_cpu]
@@ -70,8 +75,9 @@ def record_proc(proc):
     time_completed = str(proc.time_completed)
     runtime = str(proc.time_in_cpu)
     turn_around = int(proc.time_completed) - int(proc.arrival_time)
-    wait_time = turn_around - int(proc.time_in_cpu)
-    return ','.join([proc.proc, time_completed, runtime, str(turn_around), str(wait_time)]) + '\n'
+    wait_avg = str(proc.wait_avg)
+    wait_max = str(proc.wait_max)
+    return ','.join([proc.proc, time_completed, runtime, str(turn_around), wait_avg, wait_max]) + '\n'
 
 def record_to_file(alg,record_list,ctx_count,rr=None):
     '''Write list of record_proc outputs to file and return filename'''
@@ -84,7 +90,7 @@ def record_to_file(alg,record_list,ctx_count,rr=None):
 
     with open(fname,'w') as file:
         file.write('context_switches:'+ str(ctx_count)+'\n')
-        file.write("proc,completion_time,runtime,turnaround,wait\n")
+        file.write("proc,completion_time,runtime,turnaround,wait_avg,wait_max\n")
         for entry in record_list:
             file.write(entry)
     return fname
@@ -98,8 +104,8 @@ def file_stats(filename):
     df = pd.read_csv(filename,skiprows=1)
 
     stats['turnaround_avg'] = int(df.turnaround.mean())
-    stats['wait_avg'] = int(df.wait.mean())
-    stats['wait_max'] = df.wait.max()
+    stats['wait_avg'] = int(df.wait_avg.mean())
+    stats['wait_max'] = df.wait_max.max()
     stats['total_runtime'] = df.runtime.sum() + 2 * ctx_count
     stats['ctx_count'] = ctx_count
 
@@ -108,20 +114,30 @@ def file_stats(filename):
 #### ---- Statistics ---- ####
 
 ##### ---- Algortithms ---- #####
+def prevent_repick(pcb_list):
+    '''Prevent PCBs just put back in queue from being chosen'''
+    if (len(pcb_list) > 1) and (pcb_list[-1].cpu_return_time):
+        return pcb_list[:-1]
+    else:
+        return  pcb_list
+
 def fcfs(pcb_list):
     '''First come first serve'''
-    chosen_pcb = sorted(pcb_list, key=lambda pcb: pcb.arrival_time)[0]
+    clean_pcb_list = prevent_repick(pcb_list)
+    chosen_pcb = sorted(clean_pcb_list, key=lambda pcb: pcb.arrival_time)[0]
     return pcb_list.pop(pcb_list.index(chosen_pcb))
 
 def sjn(pcb_list):
     '''Shortest job next'''
     #NOTE: Functions as SRTN when time qunatum used
-    chosen_pcb = sorted(pcb_list, key=lambda pcb: pcb.est_remain_time)[0]
+    clean_pcb_list = prevent_repick(pcb_list)
+    chosen_pcb = sorted(clean_pcb_list, key=lambda pcb: pcb.est_remain_time)[0]
     return pcb_list.pop(pcb_list.index(chosen_pcb))
 
 def priority(pcb_list):
     '''Highest Priority'''
-    chosen_pcb = sorted(pcb_list, key=lambda pcb: pcb.priority)[0]
+    clean_pcb_list = prevent_repick(pcb_list)
+    chosen_pcb = sorted(clean_pcb_list, key=lambda pcb: pcb.priority)[0]
     return pcb_list.pop(pcb_list.index(chosen_pcb))
 
 ##### ---- Algortithms ---- #####
@@ -157,6 +173,21 @@ def add_incoming(ready_list,incoming_list,cpu_return_list,current_time):
     for proc in arrived_list:
         ready_list.append(proc)
 
+def update_pcb_wait(pcb,current_time):
+
+    if pcb.cpu_return_time != None:
+        wait_increment = current_time - pcb.cpu_return_time
+    else:
+        wait_increment = current_time - pcb.arrival_time
+
+    pcb.wait_total += wait_increment
+    pcb.wait_count += 1
+
+    if wait_increment > pcb.wait_max:
+        pcb.wait_max = wait_increment
+
+    pcb.wait_avg = int(pcb.wait_total / pcb.wait_count)
+
 def scheduler(alg,tq=None):
 
     #Populate Initial Queue
@@ -181,6 +212,9 @@ def scheduler(alg,tq=None):
             
             #choose pcb from ready_list based on alg
             chosen_proc = alg(ready_list)
+
+            #update process waiting statistics
+            update_pcb_wait(chosen_proc,current_time)
 
             #RR
             if tq: 
@@ -262,11 +296,11 @@ def demo_plot(results):
 
     ax_list = [axs[0,0],axs[1,0],axs[0,1],axs[1,1]]
 
-    titles = ['Turaround Average','Wait Average','Wait Maximum','Context Switches']
+    titles = ['Average Turnaround','Average Wait Time','Longest Wait Time','# Context Switches']
     for ax,title in zip(ax_list,titles):
         ax.tick_params(axis='x',labelrotation=45,labelsize='x-small')
 
-        if ax != axs[1,1]:
+        if (ax != axs[1,1]) and (ax != axs[1,0]):
             ax.set_ylim(bottom=1750)
         ax.set_title(title,fontsize='small')
 

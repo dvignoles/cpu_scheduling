@@ -1,9 +1,10 @@
 import argparse
 import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
 
 #### ---- PCB Creation ---- ####
 class PCB():
-
     def __init__(self,arrival_time,proc,pid,state,priority,interruptable,est_tot_time,est_remain_time):
         self.arrival_time = arrival_time
         self.proc = proc
@@ -35,7 +36,7 @@ def proc_to_pcb(process_strings):
 
 #### ---- Statistics ---- ####
 def record_proc(proc):
-    '''return string proc,turn_around,wait_time'''
+    '''return string: proc_name,time_completed,runtime,turn_around,wait_time'''
     time_completed = str(proc.time_completed)
     runtime = str(proc.time_in_cpu)
     turn_around = int(proc.time_completed) - int(proc.arrival_time)
@@ -43,7 +44,7 @@ def record_proc(proc):
     return ','.join([proc.proc, time_completed, runtime, str(turn_around), str(wait_time)]) + '\n'
 
 def record_to_file(alg,record_list,ctx_count,rr=None):
-    '''Write record_list to file and return file statistics'''
+    '''Write list of record_proc outputs to file and return filename'''
     if rr:
         filename = alg.__name__ + '_' + str(rr) + '.csv'
     else:
@@ -57,6 +58,7 @@ def record_to_file(alg,record_list,ctx_count,rr=None):
     return filename
 
 def file_stats(filename):
+    '''Return dictionary of stastistics based on output of record_to_file'''
     stats = {}
 
     with open(filename) as f:
@@ -81,6 +83,7 @@ def fcfs(pcb_list):
 
 def sjn(pcb_list):
     '''Shortest job next'''
+    #NOTE: Functions as SRTN when time qunatum used
     chosen_pcb = sorted(pcb_list, key=lambda pcb: pcb.est_remain_time)[0]
     return pcb_list.pop(pcb_list.index(chosen_pcb))
 
@@ -88,6 +91,7 @@ def priority(pcb_list):
     '''Highest Priority'''
     chosen_pcb = sorted(pcb_list, key=lambda pcb: pcb.priority)[0]
     return pcb_list.pop(pcb_list.index(chosen_pcb))
+
 ##### ---- Algortithms ---- #####
 
 #### ---- Scheduling / CPU ---- ####
@@ -170,10 +174,14 @@ def scheduler(alg,tq=None):
     return record_to_file(alg,record_list,ctx_count,tq)
 
 def cpu(pcb, current_time, until_completion=True, quantum = None,):
+    '''Decrement PCB est_remain_time and perform some necesary admin'''
 
+    #non preemptive
     if until_completion:
         time_in_cpu = pcb.est_remain_time
         pcb.est_remain_time = 0
+
+    #RR
     else:
         assert(quantum != None)
         new_remain_time = pcb.est_remain_time - quantum
@@ -186,22 +194,88 @@ def cpu(pcb, current_time, until_completion=True, quantum = None,):
             time_in_cpu = quantum
             pcb.est_remain_time = new_remain_time
 
+    #Stats
     if pcb.est_remain_time == 0:
         pcb.time_completed = current_time + time_in_cpu  
 
     pcb.cpu_return_time = current_time + time_in_cpu
-    pcb.time_in_cpu += time_in_cpu #stats keeping
+    pcb.time_in_cpu += time_in_cpu
 
     return(time_in_cpu)
 #### ---- Scheduling / CPU ---- #### 
 
 #### ---- Main ---- ####
+def demo_plot(results):
+    labels = []
+    turnaround_avg = []
+    wait_avg = []
+    wait_max = []
+    ctx_count = []
+
+    for key,val in results.items():
+        labels.append(key)
+        turnaround_avg.append(val['turnaround_avg'])
+        wait_avg.append(val['wait_avg'])
+        wait_max.append(val['wait_max'])
+        ctx_count.append(val['ctx_count'])
+
+    fig, axs = plt.subplots(2,2)
+    x = np.arange(len(labels))
+    colors = ['b','g','r','c','m','y','k','xkcd:royal purple']
+
+    axs[0,0].bar(x,turnaround_avg,tick_label=labels,color=colors)
+    axs[1,0].bar(x,wait_avg,tick_label=labels,color=colors)
+    axs[0,1].bar(x,wait_max,tick_label=labels,color=colors)
+    axs[1,1].bar(x,ctx_count,tick_label=labels,color=colors)
+
+    ax_list = [axs[0,0],axs[1,0],axs[0,1],axs[1,1]]
+
+    titles = ['Turaround Average','Wait Average','Wait Maximum','Context Switches']
+    for ax,title in zip(ax_list,titles):
+        ax.tick_params(axis='x',labelrotation=45,labelsize='x-small')
+
+        if ax != axs[1,1]:
+            ax.set_ylim(bottom=1750)
+        ax.set_title(title,fontsize='small')
+
+
+    fig.suptitle('CPU Scheduling Algorithms by the Numbers')
+    fig.set_size_inches(12.8,9.6)
+    plt.show()
+    fig.savefig('cpu_scheduling_plot.png',bbox_inches='tight')
+
+def demo_table(results):
+    df = pd.DataFrame.from_dict(results,orient='index')
+    print(df)
+
+def demo():
+    results = {}
+
+    #FCFS
+    results['fcfs'] = file_stats(scheduler(fcfs))
+    #SJN
+    results['sjn'] = file_stats(scheduler(sjn))
+    #PRIORITY
+    results['priority'] = file_stats(scheduler(priority))
+    #FCFS RR 10 100 1000
+    results['fcfs_10'] = file_stats(scheduler(fcfs,10))
+    results['fcfs_100'] = file_stats(scheduler(fcfs,100))
+    results['fcfs_1000'] = file_stats(scheduler(fcfs,1000))
+    #SRTN 50
+    results['srtn_50'] = file_stats(scheduler(sjn,50))
+    #Priority RR 50
+    results['priority_50'] = file_stats(scheduler(priority,50))
+
+    demo_table(results)
+    demo_plot(results)
+    
+
 def arg_parser():
     '''Returns ArgumentParser object for command line arguments'''
     parser = argparse.ArgumentParser()
-    parser.add_argument("-fcfs",help="First Come First Serve Scheduling",nargs=1)
-    parser.add_argument("-sjn",help="Shortest Job Next Scheduling",nargs=1)
-    parser.add_argument("-priority",help="Priority Scheduling",nargs=1)
+    parser.add_argument("-fcfs",help="First Come First Serve Scheduling time quantum. TQ <= 0 -> non-preemptive",nargs=1)
+    parser.add_argument("-sjn",help="Shortest Job Next Scheduling time quantum. TQ <= 0 -> non-preemptive",nargs=1)
+    parser.add_argument("-priority",help="Priority Scheduling time quantum. TQ <= 0 -> non-preemptive",nargs=1)
     parser.add_argument("-g","--graph",help="Produce a plot", action="store_true")
     return(parser)
 
@@ -242,6 +316,10 @@ def main():
             print('priority tq_{}: '.format(priority_tq),file_stats(scheduler(priority,priority_tq)))
         else:
             print('priority: ',file_stats(scheduler(priority)))
+    
+    #No args = Demo
+    if not (args.fcfs and args.sjn and args.priority):
+        demo()
 
 if __name__ == '__main__':
     main()

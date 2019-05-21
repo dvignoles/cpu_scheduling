@@ -77,7 +77,8 @@ def record_proc(proc):
     turn_around = int(proc.time_completed) - int(proc.arrival_time)
     wait_avg = str(proc.wait_avg)
     wait_max = str(proc.wait_max)
-    return ','.join([proc.proc, time_completed, runtime, str(turn_around), wait_avg, wait_max]) + '\n'
+    wait_total = str(proc.wait_total)
+    return ','.join([proc.proc, time_completed, runtime, str(turn_around), wait_avg, wait_max,wait_total]) + '\n'
 
 def record_to_file(alg,record_list,ctx_count,rr=None):
     '''Write list of record_proc outputs to file and return filename'''
@@ -90,7 +91,7 @@ def record_to_file(alg,record_list,ctx_count,rr=None):
 
     with open(fname,'w') as file:
         file.write('context_switches:'+ str(ctx_count)+'\n')
-        file.write("proc,completion_time,runtime,turnaround,wait_avg,wait_max\n")
+        file.write("proc,completion_time,runtime,turnaround,wait_avg,wait_max,wait_total\n")
         for entry in record_list:
             file.write(entry)
     return fname
@@ -106,6 +107,7 @@ def file_stats(filename):
     stats['turnaround_avg'] = int(df.turnaround.mean())
     stats['wait_avg'] = int(df.wait_avg.mean())
     stats['wait_max'] = df.wait_max.max()
+    stats['wait_total_max'] = df.wait_total.max()
     stats['total_runtime'] = df.runtime.sum() + 2 * ctx_count
     stats['ctx_count'] = ctx_count
 
@@ -124,7 +126,8 @@ def prevent_repick(pcb_list):
 def fcfs(pcb_list):
     '''First come first serve'''
     clean_pcb_list = prevent_repick(pcb_list)
-    chosen_pcb = sorted(clean_pcb_list, key=lambda pcb: pcb.arrival_time)[0]
+    chosen_pcb = pcb_list[0]
+    #chosen_pcb = sorted(clean_pcb_list, key=lambda pcb: pcb.arrival_time)[0]
     return pcb_list.pop(pcb_list.index(chosen_pcb))
 
 def sjn(pcb_list):
@@ -300,8 +303,6 @@ def demo_plot(results):
     for ax,title in zip(ax_list,titles):
         ax.tick_params(axis='x',labelrotation=45,labelsize='x-small')
 
-        if (ax != axs[1,1]) and (ax != axs[1,0]):
-            ax.set_ylim(bottom=1750)
         ax.set_title(title,fontsize='small')
 
 
